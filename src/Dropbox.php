@@ -16,8 +16,11 @@ class Dropbox
     protected static $authorizeUrl = 'https://www.dropbox.com/oauth2/authorize';
     protected static $tokenUrl = 'https://api.dropbox.com/oauth2/token';
 
-    public function __construct()
+    protected $accessToken = '';
+
+    public function __construct(string $accessToken = '')
     {
+        $this->accessToken = $accessToken;
     }
 
     public function files()
@@ -66,12 +69,12 @@ class Dropbox
         if (!request()->has('code')) {
 
             $url = self::$authorizeUrl . '?' . http_build_query([
-                'response_type' => 'code',
-                'client_id' => config('dropbox.clientId'),
-                'redirect_uri' => config('dropbox.redirectUri'),
-                'scope' => config('dropbox.scopes'),
-                'token_access_type' => config('dropbox.accessType')
-            ]);
+                                                                    'response_type' => 'code',
+                                                                    'client_id' => config('dropbox.clientId'),
+                                                                    'redirect_uri' => config('dropbox.redirectUri'),
+                                                                    'scope' => config('dropbox.scopes'),
+                                                                    'token_access_type' => config('dropbox.accessType')
+                                                                ]);
 
             return redirect()->away($url);
         } elseif (request()->has('code')) {
@@ -115,12 +118,10 @@ class Dropbox
 
     /**
      * Disables the access token used to authenticate the call, redirects back to the provided path
-     * @param string $redirectPath
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function disconnect($redirectPath = '/')
+    public function disconnect(string $uid = '')
     {
-        $id = auth()->id();
 
         $client = new Client;
         $response = $client->post(self::$baseUrl.'auth/token/revoke', [
@@ -129,14 +130,21 @@ class Dropbox
             ]
         ]);
 
+
         //delete token from db
-        $token = DropboxToken::where('user_id', $id)->first();
+        if (empty($uid)){
+            $id = auth()->id();
+            $token = DropboxToken::where('user_id', $id)->first();
+        }
+        else{
+            $token = DropboxToken::where('uid', $uid)->first();
+        }
+
         if ($token !== null) {
             $token->delete();
         }
 
-        header('Location: ' .url($redirectPath));
-        exit();
+        return;
     }
 
     /**
@@ -150,6 +158,10 @@ class Dropbox
         //use token from .env if exists
         if (config('dropbox.accessToken') !== '') {
             return config('dropbox.accessToken');
+        }
+
+        if (!empty($this->accessToken)){
+            return $this->accessToken;
         }
 
         //use id if passed otherwise use logged in user
